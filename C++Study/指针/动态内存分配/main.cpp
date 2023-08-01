@@ -7,7 +7,7 @@ using namespace std;
 
 int main()
 {
-                 int *p = new int(3);
+    int *p = new int(3);
     cout<<*p<<endl;
     delete p;
     p = nullptr;

@@ -13,7 +13,7 @@ int main() {
     for (int i = 0; i < 10; i++) {
         cout << *(num + i) << " ";
     }
-    delete (num);  // 用delete销毁
+    delete[] num;  // 用delete销毁
     num = nullptr; // 销毁后置空，以免出现野指针
     cout << endl;
     return 0;
