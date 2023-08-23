@@ -2,10 +2,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <string>
+#include <sys/_types/_size_t.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -61,6 +63,16 @@ class Client {
         return true;
     }
 
+    bool send(void *buffer, const size_t size) {
+        if (m_clientfd == -1)
+            return false;
+
+        if ((::send(m_clientfd, buffer, size, 0)) <= 0)
+            return false;
+
+        return true;
+    }
+
     bool recv(string &buffer, int maxlen) {
         buffer.clear();
         buffer.resize(maxlen);
@@ -82,11 +94,44 @@ class Client {
         return true;
     }
 
+    bool sendfile(const string &filename, const size_t filesize) {
+        ifstream fin(filename, ios::binary);
+        if (fin.is_open() == false) {
+            cout << "open:" << filename << "failed" << endl;
+            return false;
+        }
+
+        int onread = 0;
+        int totalbytes = 0;
+        char buffer[4096];
+
+        while (true) {
+            memset(buffer, 0, sizeof(buffer));
+
+            if (filesize - totalbytes > 4096)
+                onread = 4096;
+            else
+                onread = filesize - totalbytes;
+
+            fin.read(buffer, onread);
+
+            if (send(buffer, onread) == false)
+                return false;
+
+            totalbytes = totalbytes + onread;
+
+            if (totalbytes == filesize)
+                break;
+        }
+
+        return true;
+    }
+
     ~Client() { close(); };
 };
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
+    if (argc != 5) {
 
         perror("usage ...");
         return -1;
@@ -97,23 +142,46 @@ int main(int argc, char **argv) {
         perror("connect()");
     }
 
-    string buffer;
-    for (int i = 0; i < 10; i++) {
-        buffer = "这是第" + to_string(i + 1) + "个超级女生，编号" +
-                 to_string(i + 1) + "。";
+    struct st_fileinfo {
+        char filename[256];
+        int filesize;
+    } fileinfo;
 
-        if (client.send(buffer) == false) {
-            perror("send()");
-        }
-        cout << "发送：" << buffer << endl;
+    memset(&fileinfo, 0, sizeof(fileinfo));
+    strcpy(fileinfo.filename, argv[3]);
+    fileinfo.filesize = atoi(argv[4]);
 
-        if (client.recv(buffer, 1024) == false) {
-            perror("recv()");
-            break;
-        }
-        cout << "接收：" << buffer << endl;
-        sleep(1);
+    if (client.send(&fileinfo, sizeof(fileinfo)) == false) {
+        perror("send");
     }
+    cout << "发送文件信息：" << fileinfo.filename << "(" << fileinfo.filesize
+         << ")" << endl;
+
+    string buffer;
+    if (client.recv(buffer, 2) == false) {
+        perror("recv()");
+        return -1;
+    }
+    if (buffer != "ok") {
+        cout << "服务端没有回复ok。\n";
+        return -1;
+    }
+
+    if (client.sendfile(fileinfo.filename, fileinfo.filesize) == false) {
+        perror("sendfile()");
+        return -1;
+    }
+
+    if (client.recv(buffer, 2) == false) {
+        perror("recv()");
+        return -1;
+    }
+    if (buffer != "ok") {
+        cout << "发送文件内容失败。\n";
+        return -1;
+    }
+
+    cout << "发送文件内容成功。\n";
 
     return 0;
 }
